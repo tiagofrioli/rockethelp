@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   HStack,
   IconButton,
@@ -12,13 +12,16 @@ import {
 import { SignOut, ChatTeardropText } from "phosphor-react-native";
 import auth from "@react-native-firebase/auth";
 import Logo from "../../assets/logo_secondary.svg";
-
+import firestore from "@react-native-firebase/firestore";
 import { Filter } from "../../components/Filter";
 import { Button } from "../../components/Button";
 import { Order, OrderProps } from "../../components/Order";
 import { useNavigation } from "@react-navigation/native";
+import { dateFormat } from "../../utils/firestoreDateFormat";
+import { Loading } from "../../components/Loading";
 
 export function Home() {
+  const [isLoading, setIsLoading] = useState(true);
   const [statusSelected, setStatusSelected] = useState<"open" | "closed">(
     "open"
   );
@@ -27,6 +30,10 @@ export function Home() {
   const { colors } = useTheme();
   const navigation = useNavigation();
 
+  function handleOpenDetails(orderId: string) {
+    navigation.navigate("Details", { orderId });
+  }
+
   function handleNewOrder() {
     navigation.navigate("Register");
   }
@@ -34,6 +41,32 @@ export function Home() {
   function handleLogout() {
     auth().signOut();
   }
+
+  useEffect(() => {
+    setIsLoading(true);
+
+    const subscriber = firestore()
+      .collection("orders")
+      .where("status", "==", statusSelected)
+      .onSnapshot((snapshot) => {
+        const data = snapshot.docs.map((doc) => {
+          const { patrimony, description, status, created_at } = doc.data();
+
+          return {
+            id: doc.id,
+            patrimony,
+            description,
+            status,
+            when: dateFormat(created_at),
+          };
+        });
+
+        setOrders(data);
+        setIsLoading(false);
+      });
+
+    return subscriber;
+  }, [statusSelected]);
 
   return (
     <VStack flex={1} pb={6} bg="gray.700">
@@ -64,7 +97,7 @@ export function Home() {
         >
           <Heading color="gray.100">Meus Chamados</Heading>
 
-          <Text color="gray.200">3</Text>
+          <Text color="gray.200">{orders.length}</Text>
         </HStack>
 
         <HStack space={3} mb={8}>
@@ -81,25 +114,29 @@ export function Home() {
             isActive={statusSelected === "closed"}
           />
         </HStack>
-
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <Order data={item} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          ListEmptyComponent={() => (
-            <Center>
-              <ChatTeardropText color={colors.gray[300]} size={40} />
-              <Text color="gray.300" fontSize="xl" mt={6} textAlign="center">
-                Você ainda não possui {"\n"} {/*hack para quebra de linhas*/}
-                solicitações{" "}
-                {statusSelected === "open" ? "em andamento" : "finalizadas"}
-              </Text>
-            </Center>
-          )}
-        />
-
+        {isLoading ? (
+          <Loading />
+        ) : (
+          <FlatList
+            data={orders}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Order data={item} onPress={() => handleOpenDetails(item.id)} />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            ListEmptyComponent={() => (
+              <Center>
+                <ChatTeardropText color={colors.gray[300]} size={40} />
+                <Text color="gray.300" fontSize="xl" mt={6} textAlign="center">
+                  Você ainda não possui {"\n"} {/*hack para quebra de linhas*/}
+                  solicitações{" "}
+                  {statusSelected === "open" ? "em andamento" : "finalizadas"}
+                </Text>
+              </Center>
+            )}
+          />
+        )}
         <Button title="Nova Solicitação" onPress={handleNewOrder} />
       </VStack>
     </VStack>
